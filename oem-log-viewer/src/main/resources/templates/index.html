@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OEM API日志查询</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding-top: 20px;
+        }
+        .log-entry {
+            cursor: pointer;
+        }
+        .response-detail, .error-detail {
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .bg-success-light {
+            background-color: rgba(25, 135, 84, 0.1);
+        }
+        .bg-warning-light {
+            background-color: rgba(255, 193, 7, 0.1);
+        }
+        .bg-danger-light {
+            background-color: rgba(220, 53, 69, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mb-4">OEM API日志查询</h1>
+        
+        <!-- 查询表单 -->
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <i class="bi bi-search me-2"></i>查询条件
+            </div>
+            <div class="card-body">
+                <form id="queryForm">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="startTime" class="form-label">开始时间</label>
+                            <input type="text" class="form-control" id="startTime" name="startTime" 
+                                   th:value="${#dates.format(request.startTime, 'yyyy-MM-dd HH:mm:ss')}">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="endTime" class="form-label">结束时间</label>
+                            <input type="text" class="form-control" id="endTime" name="endTime" 
+                                   th:value="${#dates.format(request.endTime, 'yyyy-MM-dd HH:mm:ss')}">
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label for="path" class="form-label">接口路径</label>
+                            <input type="text" class="form-control" id="path" name="path" placeholder="支持模糊匹配">
+                        </div>
+                        <div class="col-md-2">
+                            <label for="statusCode" class="form-label">状态码</label>
+                            <select class="form-select" id="statusCode" name="statusCode">
+                                <option value="0">全部</option>
+                                <option value="200">200 成功</option>
+                                <option value="400">400 请求错误</option>
+                                <option value="401">401 未授权</option>
+                                <option value="403">403 禁止访问</option>
+                                <option value="404">404 未找到</option>
+                                <option value="500">500 服务器错误</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="minDuration" class="form-label">最小耗时(ms)</label>
+                            <input type="number" class="form-control" id="minDuration" name="minDuration" min="0">
+                        </div>
+                        <div class="col-md-3">
+                            <label for="maxDuration" class="form-label">最大耗时(ms)</label>
+                            <input type="number" class="form-control" id="maxDuration" name="maxDuration" min="0">
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="errorKeyword" class="form-label">异常关键词</label>
+                            <input type="text" class="form-control" id="errorKeyword" name="errorKeyword" placeholder="搜索异常信息">
+                        </div>
+                        <div class="col-md-6 d-flex align-items-end">
+                            <div class="btn-group w-100">
+                                <button type="button" class="btn btn-outline-secondary" id="lastHour">最近1小时</button>
+                                <button type="button" class="btn btn-outline-secondary" id="today">今天</button>
+                                <button type="button" class="btn btn-outline-secondary" id="yesterday">昨天</button>
+                                <button type="button" class="btn btn-outline-secondary" id="lastWeek">最近一周</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="text-end">
+                        <button type="button" class="btn btn-primary" id="queryBtn">
+                            <i class="bi bi-search me-2"></i>查询
+                        </button>
+                        <button type="reset" class="btn btn-secondary">
+                            <i class="bi bi-arrow-counterclockwise me-2"></i>重置
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- 查询结果 -->
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <i class="bi bi-list-ul me-2"></i>查询结果
+                <span class="badge bg-light text-dark ms-2" id="totalRecords">0条记录</span>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped">
+                        <thead>
+                            <tr>
+                                <th>时间</th>
+                                <th>主机名</th>
+                                <th>接口路径</th>
+                                <th>方法</th>
+                                <th>状态</th>
+                                <th>耗时(ms)</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logTable">
+                            <tr>
+                                <td colspan="7" class="text-center">请输入查询条件</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- 分页 -->
+                <div class="pagination">
+                    <ul class="pagination" id="pagination">
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 日志详情模态框 -->
+        <div class="modal fade" id="logDetailModal" tabindex="-1">
+            <div class="modal-dialog modal-xl">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">日志详情</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">请求时间:</label>
+                                    <div id="detail-requestTime"></div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">主机名:</label>
+                                    <div id="detail-hostname"></div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">请求路径:</label>
+                                    <div id="detail-path"></div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">请求方法:</label>
+                                    <div id="detail-method"></div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">客户端IP:</label>
+                                    <div id="detail-clientIp"></div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">状态码:</label>
+                                    <div id="detail-statusCode"></div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">执行耗时:</label>
+                                    <div id="detail-executionTime"></div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">请求参数:</label>
+                                    <div id="detail-requestParams" class="response-detail"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">响应数据:</label>
+                            <div id="detail-responseBody" class="response-detail"></div>
+                        </div>
+                        <div class="mb-3" id="error-container">
+                            <label class="form-label fw-bold">异常信息:</label>
+                            <div id="detail-exceptionMsg" class="error-detail"></div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/zh.js"></script>
+    <script>
+    $(document).ready(function() {
+        // 初始化日期选择器
+        flatpickr("#startTime", {
+            enableTime: true,
+            dateFormat: "Y-m-d H:i:S",
+            locale: "zh"
+        });
+        
+        flatpickr("#endTime", {
+            enableTime: true,
+            dateFormat: "Y-m-d H:i:S",
+            locale: "zh"
+        });
+        
+        // 快捷时间选择
+        $("#lastHour").click(function() {
+            const now = new Date();
+            const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+            $("#startTime").val(formatDate(oneHourAgo));
+            $("#endTime").val(formatDate(now));
+        });
+        
+        $("#today").click(function() {
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            $("#startTime").val(formatDate(today));
+            $("#endTime").val(formatDate(now));
+        });
+        
+        $("#yesterday").click(function() {
+            const now = new Date();
+            const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+            const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
+            $("#startTime").val(formatDate(yesterday));
+            $("#endTime").val(formatDate(end));
+        });
+        
+        $("#lastWeek").click(function() {
+            const now = new Date();
+            const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            $("#startTime").val(formatDate(oneWeekAgo));
+            $("#endTime").val(formatDate(now));
+        });
+        
+        // 查询按钮
+        $("#queryBtn").click(function() {
+            queryLogs(1);
+        });
+        
+        // 详情模态框
+        const logDetailModal = new bootstrap.Modal(document.getElementById('logDetailModal'));
+        
+        // 查询日志
+        function queryLogs(page) {
+            const formData = $("#queryForm").serialize() + "&page=" + page + "&pageSize=20";
+            
+            $.ajax({
+                url: "/api/logs",
+                type: "POST",
+                data: formData,
+                dataType: "json",
+                success: function(result) {
+                    $("#totalRecords").text(result.total + "条记录");
+                    renderTable(result.logs);
+                    renderPagination(result.total, page);
+                },
+                error: function(xhr) {
+                    alert("查询失败: " + xhr.responseText);
+                }
+            });
+        }
+        
+        // 渲染表格
+        function renderTable(logs) {
+            const $table = $("#logTable");
+            $table.empty();
+            
+            if (!logs || logs.length === 0) {
+                $table.append('<tr><td colspan="7" class="text-center">没有找到符合条件的记录</td></tr>');
+                return;
+            }
+            
+            logs.forEach(function(log) {
+                const statusClass = getStatusClass(log.statusCode);
+                const $tr = $('<tr class="log-entry ' + statusClass + '"></tr>');
+                
+                $tr.append('<td>' + formatDateTime(log.requestTime) + '</td>');
+                $tr.append('<td>' + log.hostname + '</td>');
+                $tr.append('<td>' + log.path + '</td>');
+                $tr.append('<td>' + log.method + '</td>');
+                $tr.append('<td>' + getStatusBadge(log.statusCode) + '</td>');
+                $tr.append('<td>' + log.executionTime + '</td>');
+                $tr.append('<td><button class="btn btn-sm btn-info view-detail">查看</button></td>');
+                
+                $tr.data("log", log);
+                $table.append($tr);
+            });
+            
+            // 绑定查看详情事件
+            $(".view-detail").click(function(e) {
+                e.stopPropagation();
+                const log = $(this).closest("tr").data("log");
+                showLogDetail(log);
+            });
+            
+            $(".log-entry").click(function() {
+                const log = $(this).data("log");
+                showLogDetail(log);
+            });
+        }
+        
+        // 显示日志详情
+        function showLogDetail(log) {
+            $("#detail-requestTime").text(formatDateTime(log.requestTime));
+            $("#detail-hostname").text(log.hostname);
+            $("#detail-path").text(log.path);
+            $("#detail-method").text(log.method);
+            $("#detail-clientIp").text(log.clientIp);
+            $("#detail-statusCode").html(getStatusBadge(log.statusCode));
+            $("#detail-executionTime").text(log.executionTime + " ms");
+            $("#detail-requestParams").text(log.requestParams || "无");
+            $("#detail-responseBody").text(log.responseBody || "无");
+            
+            // 异常信息
+            if (log.exceptionMsg) {
+                $("#error-container").show();
+                $("#detail-exceptionMsg").text(log.exceptionMsg);
+            } else {
+                $("#error-container").hide();
+            }
+            
+            logDetailModal.show();
+        }
+        
+        // 渲染分页
+        function renderPagination(total, currentPage) {
+            const $pagination = $("#pagination");
+            $pagination.empty();
+            
+            const pageSize = 20;
+            const totalPages = Math.ceil(total / pageSize);
+            
+            if (totalPages <= 1) {
+                return;
+            }
+            
+            // 上一页
+            $pagination.append(
+                '<li class="page-item ' + (currentPage <= 1 ? 'disabled' : '') + '">' +
+                '<a class="page-link" href="#" data-page="' + (currentPage - 1) + '">上一页</a>' +
+                '</li>'
+            );
+            
+            // 页码
+            let startPage = Math.max(1, currentPage - 2);
+            let endPage = Math.min(totalPages, startPage + 4);
+            if (endPage - startPage < 4) {
+                startPage = Math.max(1, endPage - 4);
+            }
+            
+            for (let i = startPage; i <= endPage; i++) {
+                $pagination.append(
+                    '<li class="page-item ' + (i === currentPage ? 'active' : '') + '">' +
+                    '<a class="page-link" href="#" data-page="' + i + '">' + i + '</a>' +
+                    '</li>'
+                );
+            }
+            
+            // 下一页
+            $pagination.append(
+                '<li class="page-item ' + (currentPage >= totalPages ? 'disabled' : '') + '">' +
+                '<a class="page-link" href="#" data-page="' + (currentPage + 1) + '">下一页</a>' +
+                '</li>'
+            );
+            
+            // 绑定分页事件
+            $(".page-link").click(function(e) {
+                e.preventDefault();
+                const page = $(this).data("page");
+                queryLogs(page);
+            });
+        }
+        
+        // 格式化日期
+        function formatDate(date) {
+            const pad = num => num.toString().padStart(2, '0');
+            return date.getFullYear() + '-' + 
+                   pad(date.getMonth() + 1) + '-' + 
+                   pad(date.getDate()) + ' ' + 
+                   pad(date.getHours()) + ':' + 
+                   pad(date.getMinutes()) + ':' + 
+                   pad(date.getSeconds());
+        }
+        
+        // 格式化日期时间（处理后端返回的ISO格式）
+        function formatDateTime(dateTimeStr) {
+            if (!dateTimeStr) return '';
+            const date = new Date(dateTimeStr);
+            if (isNaN(date.getTime())) {
+                // 解析ISO格式
+                const parts = dateTimeStr.match(/(\d+)-(\d+)-(\d+)T(\d+):(\d+):(\d+)/);
+                if (parts) {
+                    return parts[1] + '-' + parts[2] + '-' + parts[3] + ' ' + 
+                           parts[4] + ':' + parts[5] + ':' + parts[6];
+                }
+                return dateTimeStr;
+            }
+            return formatDate(date);
+        }
+        
+        // 获取状态码对应的样式
+        function getStatusClass(statusCode) {
+            if (statusCode >= 200 && statusCode < 300) return 'bg-success-light';
+            if (statusCode >= 400 && statusCode < 500) return 'bg-warning-light';
+            if (statusCode >= 500) return 'bg-danger-light';
+            return '';
+        }
+        
+        // 获取状态码徽章
+        function getStatusBadge(statusCode) {
+            if (statusCode >= 200 && statusCode < 300) {
+                return '<span class="badge bg-success">' + statusCode + '</span>';
+            }
+            if (statusCode >= 400 && statusCode < 500) {
+                return '<span class="badge bg-warning text-dark">' + statusCode + '</span>';
+            }
+            if (statusCode >= 500) {
+                return '<span class="badge bg-danger">' + statusCode + '</span>';
+            }
+            return '<span class="badge bg-secondary">' + statusCode + '</span>';
+        }
+    });
+    </script>
+</body>
+</html> 

@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OEM-Log 监控指标</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding: 20px;
+            font-family: 'Microsoft YaHei', sans-serif;
+        }
+        .metrics-card {
+            margin-bottom: 20px;
+            transition: all 0.3s;
+        }
+        .metrics-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .card-header {
+            font-weight: bold;
+        }
+        .card-title {
+            font-size: 2.5rem;
+            font-weight: bold;
+        }
+        .card-subtitle {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        .bg-success-light {
+            background-color: rgba(25, 135, 84, 0.1);
+        }
+        .bg-warning-light {
+            background-color: rgba(255, 193, 7, 0.1);
+        }
+        .bg-danger-light {
+            background-color: rgba(220, 53, 69, 0.1);
+        }
+        .health-good {
+            color: #198754;
+        }
+        .health-warning {
+            color: #ffc107;
+        }
+        .health-danger {
+            color: #dc3545;
+        }
+        .refresh-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="mb-4">
+            <h1 class="display-5">OEM-Log 监控指标</h1>
+            <p class="text-muted">监控日志系统的性能和健康状况</p>
+        </header>
+
+        <div class="alert alert-info" role="alert" id="lastUpdated">
+            正在加载数据...
+        </div>
+
+        <div class="row">
+            <!-- 总处理量 -->
+            <div class="col-md-4">
+                <div class="card metrics-card bg-success-light">
+                    <div class="card-header">总处理请求</div>
+                    <div class="card-body">
+                        <h2 class="card-title" id="totalProcessed">-</h2>
+                        <p class="card-subtitle">最近一分钟: <span id="recentProcessed">-</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 错误数 -->
+            <div class="col-md-4">
+                <div class="card metrics-card">
+                    <div class="card-header">错误数</div>
+                    <div class="card-body">
+                        <h2 class="card-title" id="totalErrors">-</h2>
+                        <p class="card-subtitle">缓存溢出: <span id="cacheOverflows">-</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 写入延迟 -->
+            <div class="col-md-4">
+                <div class="card metrics-card">
+                    <div class="card-header">最大写入延迟</div>
+                    <div class="card-body">
+                        <h2 class="card-title" id="maxWriteLatency">-</h2>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="resetLatency()">重置</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 队列大小 -->
+            <div class="col-md-4">
+                <div class="card metrics-card">
+                    <div class="card-header">当前队列大小</div>
+                    <div class="card-body">
+                        <h2 class="card-title" id="currentQueueSize">-</h2>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 文件大小 -->
+            <div class="col-md-4">
+                <div class="card metrics-card">
+                    <div class="card-header">当前文件大小</div>
+                    <div class="card-body">
+                        <h2 class="card-title" id="currentFileSize">-</h2>
+                        <p class="card-subtitle">索引文件: <span id="currentIndexSize">-</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 总字节数 -->
+            <div class="col-md-4">
+                <div class="card metrics-card">
+                    <div class="card-header">累计数据量</div>
+                    <div class="card-body">
+                        <h2 class="card-title" id="totalBytes">-</h2>
+                        <p class="card-subtitle">文件数: <span id="totalFiles">-</span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">系统状态</div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p><strong>健康状况: </strong><span id="healthStatus">-</span></p>
+                            </div>
+                            <div class="col-md-6">
+                                <p><strong>性能状况: </strong><span id="performanceStatus">-</span></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button class="btn btn-primary refresh-btn" onclick="fetchMetrics()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-clockwise" viewBox="0 0 16 16">
+            <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
+            <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+        </svg>
+        刷新
+    </button>
+
+    <script>
+        // 自动刷新间隔(毫秒)
+        const AUTO_REFRESH_INTERVAL = 5000;
+        let autoRefreshTimer;
+
+        // 获取指标数据
+        function fetchMetrics() {
+            fetch('/oem-log/metrics')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    updateMetricsUI(data);
+                    startAutoRefresh();
+                })
+                .catch(error => {
+                    console.error('获取指标失败:', error);
+                    document.getElementById('lastUpdated').className = 'alert alert-danger';
+                    document.getElementById('lastUpdated').textContent = '获取数据失败: ' + error.message;
+                });
+        }
+
+        // 重置延迟指标
+        function resetLatency() {
+            fetch('/oem-log/metrics/reset-latency')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    updateMetricsUI(data);
+                })
+                .catch(error => {
+                    console.error('重置延迟指标失败:', error);
+                });
+        }
+
+        // 更新UI
+        function updateMetricsUI(data) {
+            // 更新基本指标
+            document.getElementById('totalProcessed').textContent = data.totalProcessed.toLocaleString();
+            document.getElementById('recentProcessed').textContent = data.recentProcessed.toLocaleString();
+            document.getElementById('totalErrors').textContent = data.totalErrors.toLocaleString();
+            document.getElementById('cacheOverflows').textContent = data.cacheOverflows.toLocaleString();
+            document.getElementById('maxWriteLatency').textContent = data.maxWriteLatency;
+            document.getElementById('currentQueueSize').textContent = data.currentQueueSize.toLocaleString();
+            document.getElementById('currentFileSize').textContent = data.currentFileSize;
+            document.getElementById('currentIndexSize').textContent = data.currentIndexSize;
+            document.getElementById('totalBytes').textContent = formatBytes(data.totalBytes);
+            document.getElementById('totalFiles').textContent = data.totalFiles.toLocaleString();
+
+            // 更新状态指标
+            const healthStatus = document.getElementById('healthStatus');
+            healthStatus.textContent = data.status.health === 'good' ? '良好' : '警告';
+            healthStatus.className = data.status.health === 'good' ? 'health-good' : 'health-warning';
+
+            const performanceStatus = document.getElementById('performanceStatus');
+            performanceStatus.textContent = data.status.performance === 'good' ? '良好' : '警告';
+            performanceStatus.className = data.status.performance === 'good' ? 'health-good' : 'health-warning';
+
+            // 根据错误数更新卡片背景
+            const errorsCard = document.getElementById('totalErrors').parentElement.parentElement;
+            if (data.totalErrors > 0) {
+                errorsCard.className = 'card metrics-card bg-danger-light';
+            } else {
+                errorsCard.className = 'card metrics-card bg-success-light';
+            }
+
+            // 根据延迟更新卡片背景
+            const latencyCard = document.getElementById('maxWriteLatency').parentElement.parentElement;
+            if (parseInt(data.maxWriteLatency) > 100) {
+                latencyCard.className = 'card metrics-card bg-warning-light';
+            } else {
+                latencyCard.className = 'card metrics-card bg-success-light';
+            }
+
+            // 更新队列大小卡片背景
+            const queueCard = document.getElementById('currentQueueSize').parentElement.parentElement;
+            if (data.currentQueueSize > 1000) {
+                queueCard.className = 'card metrics-card bg-warning-light';
+            } else {
+                queueCard.className = 'card metrics-card bg-success-light';
+            }
+
+            // 更新最后刷新时间
+            const now = new Date();
+            document.getElementById('lastUpdated').className = 'alert alert-info';
+            document.getElementById('lastUpdated').textContent = `上次更新: ${now.toLocaleString()}`;
+        }
+
+        // 启动自动刷新
+        function startAutoRefresh() {
+            clearTimeout(autoRefreshTimer);
+            autoRefreshTimer = setTimeout(fetchMetrics, AUTO_REFRESH_INTERVAL);
+        }
+
+        // 格式化字节大小
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // 页面加载完成后获取指标
+        document.addEventListener('DOMContentLoaded', fetchMetrics);
+    </script>
+</body>
+</html> 

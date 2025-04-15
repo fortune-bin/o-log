@@ -1,0 +1,19 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /log-viewer
+
+spring:
+  application:
+    name: oem-log-viewer
+  thymeleaf:
+    cache: false
+    
+# 日志查询配置
+oem:
+  log:
+    query:
+      # 统一日志存储目录
+      search-dir: /logs/api
+      # 每次最多查询的文件数
+      max-files: 100 
