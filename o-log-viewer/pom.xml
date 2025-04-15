@@ -14,7 +14,7 @@
     <dependencies>
         <!-- 核心模块 -->
         <dependency>
-            <groupId>com.oem</groupId>
+            <groupId>com.yfzq</groupId>
             <artifactId>o-log-core</artifactId>
             <version>${project.version}</version>
         </dependency>
